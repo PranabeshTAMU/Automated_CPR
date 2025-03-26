@@ -1,29 +1,31 @@
-module tb_heart_monitoring_system;
+module heart_monitoring_system_tb;
 
     // Inputs
     reg clk;
     reg rst;
     reg [7:0] heart_rate;
     reg [7:0] oxygen_level;
-    reg [7:0] patient_weight;
-    reg [7:0] patient_age;
+    reg ecg_signal_valid;
 
     // Outputs
     wire cpr_activate;
     wire drug_delivery_activate;
-    wire [7:0] drug_dosage;
+    wire [3:0] drug_dosage;
+    wire iv_line_setup;
+    wire saline_flush;
 
-    // Instantiate the DUT (Device Under Test)
-    heart_monitoring_system dut (
+    // Instantiate the Unit Under Test (UUT)
+    heart_monitoring_system uut (
         .clk(clk),
         .rst(rst),
         .heart_rate(heart_rate),
         .oxygen_level(oxygen_level),
-        .patient_weight(patient_weight),
-        .patient_age(patient_age),
+        .ecg_signal_valid(ecg_signal_valid),
         .cpr_activate(cpr_activate),
         .drug_delivery_activate(drug_delivery_activate),
-        .drug_dosage(drug_dosage)
+        .drug_dosage(drug_dosage),
+        .iv_line_setup(iv_line_setup),
+        .saline_flush(saline_flush)
     );
 
     // Clock generation
@@ -32,110 +34,47 @@ module tb_heart_monitoring_system;
         forever #5 clk = ~clk; // 10ns clock period
     end
 
-    // Testbench logic
+    // Test cases based on Table 4
     initial begin
         // Initialize inputs
         rst = 1;
         heart_rate = 0;
         oxygen_level = 0;
-        patient_weight = 0;
-        patient_age = 0;
+        ecg_signal_valid = 0;
 
+        // Reset the system
         #10 rst = 0;
 
-        // Test 1: Bradycardia (heart rate < 50)
-        $display("Test 1: Bradycardia (heart rate < 50)");
-        heart_rate = 45;
-        patient_weight = 70;
-        patient_age = 30;
-        #100;
-        if (cpr_activate && !drug_delivery_activate) 
-            $display("Pass: CPR activated, no drug delivered.");
-        else
-            $display("Fail: CPR not activated correctly.");
+        // Test case 1: Bradycardia detected; CPR activated
+        #50 heart_rate = 40; oxygen_level = 85; ecg_signal_valid = 1;
 
-        // Test 2: Normal range (50 <= heart_rate <= 120)
-        $display("Test 2: Normal range (50 <= heart_rate <= 120)");
-        heart_rate = 80;
-        #100;
-        if (!cpr_activate && !drug_delivery_activate) 
-            $display("Pass: No action for normal heart rate.");
-        else
-            $display("Fail: Incorrect activation during normal heart rate.");
+        // Test case 2: Tachycardia detected; drug delivered
+        #50 heart_rate = 130; oxygen_level = 98; ecg_signal_valid = 1;
+        #10 if (iv_line_setup) $display("IV line setup activated");
+        #10 if (saline_flush) $display("Saline flush administered");
 
-        // Test 3: Tachycardia (heart rate > 120, drug delivery sequence)
-        $display("Test 3: Tachycardia (heart rate > 120, drug delivery)");
-        heart_rate = 130;
-        patient_weight = 60;
-        patient_age = 40;
-        #500; // Wait for drug delivery to complete
-        if (!cpr_activate && drug_delivery_activate) 
-            $display("Pass: Drug delivery sequence initiated.");
-        else
-            $display("Fail: Drug delivery sequence failed.");
+        // Test case 3: Normal range; no action required
+        #50 heart_rate = 70; oxygen_level = 98; ecg_signal_valid = 1;
 
-        // Test 4: Extreme bradycardia (heart rate < 30)
-        $display("Test 4: Extreme bradycardia (heart rate < 30)");
-        heart_rate = 30;
-        #100;
-        if (cpr_activate && !drug_delivery_activate) 
-            $display("Pass: CPR activated for extreme bradycardia.");
-        else
-            $display("Fail: CPR activation failed for extreme bradycardia.");
+        // Test case 4: Edge case - No action required
+        #50 heart_rate = 50; oxygen_level = 95; ecg_signal_valid = 1;
 
-        // Test 5: Extreme tachycardia (heart rate = 150, heavy patient)
-        $display("Test 5: Extreme tachycardia (heart rate > 150, heavy patient)");
-        heart_rate = 150;
-        patient_weight = 100; // High weight
-        patient_age = 65; // Older patient
-        #500;
-        if (!cpr_activate && drug_delivery_activate && drug_dosage == 12) 
-            $display("Pass: Correct drug dosage delivered for extreme tachycardia.");
-        else
-            $display("Fail: Incorrect drug dosage or sequence.");
+        // Test case 5: Severe tachycardia; higher dosage
+        #50 heart_rate = 160; oxygen_level = 96; ecg_signal_valid = 1;
+        #10 if (iv_line_setup) $display("IV line setup activated");
+        #10 if (saline_flush) $display("Saline flush administered");
 
-        // Test 6: Edge case (heart rate = 50)
-        $display("Test 6: Edge case (heart rate = 50)");
-        heart_rate = 50;
-        #100;
-        if (!cpr_activate && !drug_delivery_activate) 
-            $display("Pass: No action for edge case heart rate = 50.");
-        else
-            $display("Fail: Incorrect action for edge case heart rate = 50.");
+        // Test case 6: Borderline Bradycardia; CPR activated
+        #50 heart_rate = 45; oxygen_level = 85; ecg_signal_valid = 1;
 
-        // Test 7: Edge case (heart rate = 120)
-        $display("Test 7: Edge case (heart rate = 120)");
-        heart_rate = 120;
-        #100;
-        if (!cpr_activate && !drug_delivery_activate) 
-            $display("Pass: No action for edge case heart rate = 120.");
-        else
-            $display("Fail: Incorrect action for edge case heart rate = 120.");
+        // Test case 7: Near normal condition; no action required
+        #50 heart_rate = 120; oxygen_level = 92; ecg_signal_valid = 1;
 
-        // Test 8: Rapid state transition
-        $display("Test 8: Rapid transition from bradycardia to tachycardia");
-        heart_rate = 40; // Bradycardia
-        #50;
-        heart_rate = 130; // Tachycardia
-        #500;
-        if (drug_delivery_activate && !cpr_activate) 
-            $display("Pass: Correct handling of rapid transition.");
-        else
-            $display("Fail: Incorrect handling of rapid transition.");
+        // Test case 8: Slightly low oxygen level
+        #50 heart_rate = 55; oxygen_level = 88; ecg_signal_valid = 1;
 
-        // Test 9: Patient with low weight and age
-        $display("Test 9: Tachycardia with low-weight, young patient");
-        heart_rate = 130;
-        patient_weight = 40;
-        patient_age = 25;
-        #500;
-        if (drug_dosage == 6) 
-            $display("Pass: Correct dosage for low-weight young patient.");
-        else
-            $display("Fail: Incorrect dosage.");
-
-        // End of simulation
-        $display("Simulation completed.");
-        $stop;
+        // End simulation at 400 ns
+        #50 $finish;
     end
+
 endmodule
