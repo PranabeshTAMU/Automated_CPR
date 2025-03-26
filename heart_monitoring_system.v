@@ -3,88 +3,45 @@ module heart_monitoring_system (
     input wire rst,
     input wire [7:0] heart_rate,       // Heart rate in bpm
     input wire [7:0] oxygen_level,    // Oxygen level in percentage
-    input wire [7:0] patient_weight,  // Weight in kg
-    input wire [7:0] patient_age,     // Age in years
+    input wire ecg_signal_valid,      // Valid ECG signal flag (1 = valid, 0 = invalid)
     output reg cpr_activate,          // CPR activation signal
-    output reg drug_delivery_activate, // Drug delivery activation signal
-    output reg [7:0] drug_dosage      // Dosage in mg or mL
+    output reg drug_delivery_activate,// Drug delivery activation signal
+    output reg [3:0] drug_dosage,     // Dosage level
+    output reg iv_line_setup,         // IV line setup signal
+    output reg saline_flush           // Saline flush activation
 );
-
-    // Define states for drug delivery
-    localparam IDLE         = 2'b00;
-    localparam FIRST_DOSE   = 2'b01;
-    localparam SALINE_FLUSH = 2'b10;
-    localparam SECOND_DOSE  = 2'b11;
-
-    reg [1:0] state;                  // Current state
-    reg [31:0] delay_counter;         // Counter for delays
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            // Reset outputs and states
             cpr_activate <= 0;
             drug_delivery_activate <= 0;
             drug_dosage <= 0;
-            state <= IDLE;
-            delay_counter <= 0;
+            iv_line_setup <= 0;
+            saline_flush <= 0;
         end else begin
-            // Bradycardia: Heart rate < 50 (CPR only)
-            if (heart_rate < 50) begin
-                cpr_activate <= 1;
-                drug_delivery_activate <= 0;
-                drug_dosage <= 0; // No drug dosage required for bradycardia
-                state <= IDLE;    // Reset drug delivery state
-                delay_counter <= 0;
-            end 
-            // Tachycardia: Heart rate > 120 (drug delivery sequence)
-            else if (heart_rate > 120) begin
-                cpr_activate <= 0;
-                drug_delivery_activate <= 1;
+            // Default state: No action required
+            cpr_activate <= 0;
+            drug_delivery_activate <= 0;
+            drug_dosage <= 0;
+            iv_line_setup <= 0;
+            saline_flush <= 0;
 
-                case (state)
-                    IDLE: begin
-                        drug_dosage <= 6; // 6 mg Adenosine (1st dose)
-                        state <= FIRST_DOSE;
-                        delay_counter <= 0;
-                    end
-                    FIRST_DOSE: begin
-                        if (delay_counter >= 10) begin // 1-2 seconds delay
-                            drug_dosage <= 20; // 10-20 mL Saline flush
-                            state <= SALINE_FLUSH;
-                            delay_counter <= 0;
-                        end else begin
-                            delay_counter <= delay_counter + 1;
-                        end
-                    end
-                    SALINE_FLUSH: begin
-                        if (delay_counter >= 120) begin // 1-2 minutes delay
-                            drug_dosage <= 12; // 12 mg Adenosine (2nd dose)
-                            state <= SECOND_DOSE;
-                            delay_counter <= 0;
-                        end else begin
-                            delay_counter <= delay_counter + 1;
-                        end
-                    end
-                    SECOND_DOSE: begin
-                        if (delay_counter >= 10) begin // Final dose complete
-                            drug_dosage <= 0;
-                            state <= IDLE;
-                            drug_delivery_activate <= 0; // End drug delivery
-                        end else begin
-                            delay_counter <= delay_counter + 1;
-                        end
-                    end
-                endcase
-            end 
-            // Normal range: Heart rate between 50 and 120
-            else begin
-                cpr_activate <= 0;
-                drug_delivery_activate <= 0;
-                drug_dosage <= 0; // No action required
-                state <= IDLE;    // Reset drug delivery state
-                delay_counter <= 0;
+            // Logic based on heart rate, oxygen level, and ECG signal validity
+            if (heart_rate < 50 && ecg_signal_valid && oxygen_level < 95) begin
+                cpr_activate <= 1; // Activate CPR for bradycardia with low oxygen
+            end else if (heart_rate > 120 && ecg_signal_valid && oxygen_level >= 95) begin
+                drug_delivery_activate <= 1; // Activate drug delivery for tachycardia
+                iv_line_setup <= 1; // Setup IV line for drug administration
+                drug_dosage <= 6; // Initial dose of 6 mg
+            end
+           
+            // Simulate the one-shot adenosine injection and saline flush
+            if (drug_delivery_activate) begin
+                #10 saline_flush <= 1; // Administer saline flush after drug injection
+                #10 saline_flush <= 0; // Reset saline flush after injection
+                #20 iv_line_setup <= 0; // Close IV setup after one-shot injection
             end
         end
     end
-endmodule
 
+endmodule
